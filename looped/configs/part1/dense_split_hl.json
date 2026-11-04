@@ -1,0 +1,38 @@
+{
+  "architectures": [
+    "LLaMAForCausalLM"
+  ],
+  "attention_bias": false,
+  "bos_token_id": null,
+  "eos_token_id": 50279,
+  "head_dim": 64,
+  "hidden_act": "silu",
+  "hidden_size": 1536,
+  "intermediate_size": 4352,
+  "initializer_range": 0.02,
+  "embedding_init_std": 0.02551551815399144,
+  "max_sequence_length": 2048,
+  "model_type": "llama",
+  "num_hidden_layers": 28,
+  "num_attention_heads": 24,
+  "num_key_value_heads": 6,
+  "pad_token_id": 1,
+  "rope_theta": 1000000,
+  "rope_type": "complex",
+  "rms_norm_eps": 1e-06,
+  "tie_word_embeddings": false,
+  "torch_dtype": "bfloat16",
+  "vocab_size": 50280,
+  "looped": {
+    "architecture": "huginn",
+    "loop_times": 8,
+    "prelude_layers": 8,
+    "recurrent_layers": 12,
+    "coda_layers": 8,
+    "state_init": "normal",
+    "input_injection": "diagonal",
+    "diagonal_dt_init": 1.0,
+    "diagonal_a_init": 1.0,
+    "hierarchical_state": "split_hl"
+  }
+}
