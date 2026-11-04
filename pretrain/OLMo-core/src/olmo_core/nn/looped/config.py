@@ -90,24 +90,6 @@ class LoopedConfig(Config):
     qk_bias: bool = False
     recurrence_final_norm: bool = False
 
-    # Not in the release: an exit head, one logit per token and recurrence read from the recurrent
-    # state after the LM head's norm. Trained (``exit_targets`` in the forward) as a hazard, to fire at
-    # the recurrence a token is told to stop at and not before, with weight ``exit_loss_weight``; at evaluation
-    # ``exit_threshold`` freezes the tokens of ``exit_mask`` at the first recurrence it fires.
-    exit_head: bool = False
-    exit_loss_weight: float = 1.0
-    exit_bias_init: float = -4.0
-    # Where the exit logits come from: ``head`` (the exit head above) or ``latent``, Huginn's own latent-diff
-    # rule as a logit, ``(log exit_latent_threshold - log c_t) / exit_latent_temperature`` with ``c_t`` the
-    # relative change of a token's state in recurrence t: it fires where the release's rule would exit.
-    exit_rule: str = "head"
-    exit_latent_threshold: float = 0.1
-    exit_latent_temperature: float = 0.25
-    # Not in the release: with ``frozen_kv`` a token past its loop count (``loop_counts`` or the exit
-    # head) keeps the keys and values of its last recurrence in every core attention, as a real exit
-    # with Huginn's "latest" cache lookup would; without it they are recomputed from its frozen state.
-    frozen_kv: bool = False
-
     def validate(self, n_layers: int) -> None:
         def fail(message: str):
             raise OLMoConfigurationError(f"looped: {message}")
@@ -138,8 +120,8 @@ class LoopedConfig(Config):
                     fail("every prelude input layer must come after the source layer")
             if self.depth_control:
                 fail("depth_control applies to huginn only")
-            if self.state_init_std > 0 or self.recurrence_final_norm or self.exit_head or self.frozen_kv:
-                fail("state_init_std, recurrence_final_norm, exit_head and frozen_kv apply to huginn only")
+            if self.state_init_std > 0 or self.recurrence_final_norm:
+                fail("state_init_std and recurrence_final_norm apply to huginn only")
             return
 
         recurrent = self.recurrent_count(n_layers)
@@ -153,12 +135,6 @@ class LoopedConfig(Config):
             fail("state_init_std is the scale of state_init=truncated_normal, and only of it")
         if self.recurrence_final_norm and self.hierarchical_state != "none":
             fail("recurrence_final_norm supports a single recurrent state")
-        if (self.exit_head or self.frozen_kv) and self.hierarchical_state != "none":
-            fail("exit_head and frozen_kv support a single recurrent state")
-        if self.exit_rule not in ("head", "latent"):
-            fail("exit_rule must be head or latent")
-        if self.exit_rule == "latent" and (self.exit_latent_threshold <= 0 or self.exit_latent_temperature <= 0):
-            fail("the latent exit rule needs a positive threshold and temperature")
         if self.input_injection not in ("none", "diagonal", "linear"):
             fail("input_injection must be none, diagonal or linear")
         if self.hierarchical_state not in HIERARCHICAL_STATES:

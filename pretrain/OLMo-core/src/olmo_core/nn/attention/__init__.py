@@ -2,7 +2,7 @@ import logging
 import math
 import warnings
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -530,8 +530,6 @@ class Attention(SequenceMixer):
         pos_cos: Optional[torch.Tensor] = None,
         freqs_cis: Optional[torch.Tensor] = None,
         cache_leftpad: Optional[torch.Tensor] = None,
-        projections: Optional[Tuple[torch.Tensor, ...]] = None,
-        kv_hook: Optional[Callable[["Attention", torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]] = None,
     ) -> torch.Tensor:
         """
         Apply attention to the input.
@@ -543,27 +541,15 @@ class Attention(SequenceMixer):
             Required together with ``max_doc_len`` when using intra-document masking.
         :param max_doc_len: The maximum document length in the input ``x``.
             Required together with ``cu_doc_lens`` when using intra-document masking.
-        :param kv_hook: Called with this module and the keys and values after RoPE (shape
-            ``(batch_size, seq_len, n_kv_heads, head_dim)``); returns the keys and values to attend to.
-            A looped model uses it to keep the cached keys and values of exited tokens.
 
         :returns: The output of attention with shape ``(batch_size, seq_len, d_model)``.
         """
-        if projections is None:
-            B, T, _ = x.shape
+        B, T, _ = x.shape
 
-            # shape: (batch_size, seq_len, n_heads * head_dim),
-            #        (batch_size, seq_len, n_kv_heads * head_dim),
-            #        (batch_size, seq_len, n_kv_heads * head_dim)
-            q, k, v = self.w_q(x), self.w_k(x), self.w_v(x)
-            g = None
-        else:
-            # mHC recompute (``nn.transformer.block.PreNormAttentionBranch``): the input
-            # projections (and the gate's, when present) were applied by the caller so their
-            # input can be rebuilt in backward instead of stored.
-            q, k, v, *rest = projections
-            g = rest[0] if rest else None
-            B, T, _ = q.shape
+        # shape: (batch_size, seq_len, n_heads * head_dim),
+        #        (batch_size, seq_len, n_kv_heads * head_dim),
+        #        (batch_size, seq_len, n_kv_heads * head_dim)
+        q, k, v = self.w_q(x), self.w_k(x), self.w_v(x)
 
         if self.clip_qkv is not None:
             q.clamp_(min=-self.clip_qkv, max=self.clip_qkv)
@@ -610,9 +596,6 @@ class Attention(SequenceMixer):
                 freqs_cis=freqs_cis,
             )
 
-        if kv_hook is not None:
-            k, v = kv_hook(self, k, v)
-
         # shape: (batch_size, seq_len, n_heads, head_dim)
         att = self.sdpa(
             q,
@@ -630,8 +613,7 @@ class Attention(SequenceMixer):
 
         if self.gate is not None:
             assert self.w_g is not None
-            if g is None:
-                g = self.w_g(x)
+            g = self.w_g(x)
             if self.gate.full_precision:
                 g = g.float()
             gate_values = torch.sigmoid(g).to(att.dtype)

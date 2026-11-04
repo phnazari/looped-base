@@ -88,7 +88,7 @@ def parity(olmo, hf_model, tok, steps=(1, 4, 32)):
     torch.manual_seed(0)
     s0 = torch.randn(e_shape, device="cuda") * 0.0087 * 72.66
     hf_model.initialize_state = lambda embeds, scale=1.0: s0.clone()
-    olmo.initialize_recurrent_state = lambda embeds, cache_len=0, seeds=None: s0.to(embeds.dtype)
+    olmo.initialize_recurrent_state = lambda embeds, cache_len=0: s0.to(embeds.dtype)
     worst = 0.0
     for r in steps:
         ref = hf_model(ids, num_steps=torch.tensor([r, 0])).logits.float()
@@ -101,26 +101,7 @@ def parity(olmo, hf_model, tok, steps=(1, 4, 32)):
               f"next={tok.decode(ref[0, -1].argmax())!r}/{tok.decode(got[0, -1].argmax())!r}", flush=True)
         worst = max(worst, rel)
 
-    # Per-token loop counts: the reference freezes token t after r_t core iterations on the release's modules.
-    R = 32
-    r = torch.randint(1, R + 1, ids.shape, device="cuda", generator=torch.Generator(device="cuda").manual_seed(1))
-    freqs = hf_model.freqs_cis[:, : ids.shape[1]]
-    e = hf_model.transformer.wte(ids) * hf_model.emb_scale
-    for block in hf_model.transformer.prelude:
-        e = block(e, freqs, 0, None, None)
-    x = s0.clone()
-    for step in range(R):
-        update, _ = hf_model.core_block_forward(x, e, freqs, None, None, torch.tensor(0), step)
-        x = torch.where((step < r)[..., None], update, x)
-    h = hf_model.transformer.ln_f(x)
-    for block in hf_model.transformer.coda:
-        h = block(h, freqs, 0, None, None)
-    ref = hf_model.lm_head(hf_model.transformer.ln_f(h)).float()
-    olmo.looped.loop_times = R
-    got = olmo(ids, loop_counts=r).float()
-    rel = (got - ref).abs().max().item() / ref.abs().max().item()
-    print(f"per-token r  rel={rel:.3e}  argmax agree={(got.argmax(-1) == ref.argmax(-1)).float().mean().item():.4f}")
-    return max(worst, rel)
+    return worst
 
 
 def main():

@@ -1,7 +1,7 @@
 import functools
 import math
 from dataclasses import dataclass
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional
 
 import torch
 import torch.nn as nn
@@ -162,22 +162,13 @@ class FeedForward(nn.Module):
         self.w2 = nn.Linear(hidden_size, d_model, bias=bias, dtype=dtype, device=init_device)
         self.w3 = nn.Linear(d_model, hidden_size, bias=bias, dtype=dtype, device=init_device)
 
-    def forward(
-        self, x: torch.Tensor, projections: Optional[Tuple[torch.Tensor, torch.Tensor]] = None
-    ) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Run the feed-forward on the input ``x``.
 
         :param x: The input of shape ``(*, d_model)``.
-        :param projections: ``(w1(x), w3(x))`` already applied by the caller (mHC recompute,
-            ``nn.transformer.block.PreNormFeedForwardBranch``), so that their input can be
-            rebuilt in backward instead of stored.
         """
-        if projections is None:
-            h1, h3 = self.w1(x), self.w3(x)
-        else:
-            h1, h3 = projections
-        return self.w2(self.activation_fn(h1) * h3)
+        return self.w2(self.activation_fn(self.w1(x)) * self.w3(x))
 
     def apply_tp(
         self,
